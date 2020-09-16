@@ -1,0 +1,549 @@
+<#
+
+.SYNOPSIS
+
+	This script performs the installation or uninstallation of an application(s).
+
+.DESCRIPTION
+
+	The script is provided as a template to perform an install or uninstall of an application(s).
+
+	The script either performs an "Install" deployment type or an "Uninstall" deployment type.
+
+	The install deployment type is broken down into 3 main sections/phases: Pre-Install, Install, and Post-Install.
+
+	The script dot-sources the AppDeployToolkitMain.ps1 script which contains the logic and functions required to install or uninstall an application.
+
+.PARAMETER DeploymentType
+
+	The type of deployment to perform. Default is: Install.
+
+.PARAMETER DeployMode
+
+	Specifies whether the installation should be run in Interactive, Silent, or NonInteractive mode. Default is: Interactive. Options: Interactive = Shows dialogs, Silent = No dialogs, NonInteractive = Very silent, i.e. no blocking apps. NonInteractive mode is automatically set if it is detected that the process is not user interactive.
+
+.PARAMETER AllowRebootPassThru
+
+	Allows the 3010 return code (requires restart) to be passed back to the parent process (e.g. SCCM) if detected from an installation. If 3010 is passed back to SCCM, a reboot prompt will be triggered.
+
+.PARAMETER TerminalServerMode
+
+	Changes to "user install mode" and back to "user execute mode" for installing/uninstalling applications for Remote Destkop Session Hosts/Citrix servers.
+
+.PARAMETER DisableLogging
+
+	Disables logging to file for the script. Default is: $false.
+
+.EXAMPLE
+
+    powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeployMode 'Silent'; Exit $LastExitCode }"
+
+.EXAMPLE
+
+    powershell.exe -Command "& { & '.\Deploy-Application.ps1' -AllowRebootPassThru; Exit $LastExitCode }"
+
+.EXAMPLE
+
+    powershell.exe -Command "& { & '.\Deploy-Application.ps1' -DeploymentType 'Uninstall'; Exit $LastExitCode }"
+
+.EXAMPLE
+
+    Deploy-Application.exe -DeploymentType "Install" -DeployMode "Silent"
+
+.NOTES
+
+	Toolkit Exit Code Ranges:
+
+	60000 - 68999: Reserved for built-in exit codes in Deploy-Application.ps1, Deploy-Application.exe, and AppDeployToolkitMain.ps1
+
+	69000 - 69999: Recommended for user customized exit codes in Deploy-Application.ps1
+
+	70000 - 79999: Recommended for user customized exit codes in AppDeployToolkitExtensions.ps1
+
+.LINK 
+
+	http://psappdeploytoolkit.com
+
+#>
+
+[CmdletBinding()]
+
+Param (
+
+	[Parameter(Mandatory=$false)]
+
+	[ValidateSet('Install','Uninstall')]
+
+	[string]$DeploymentType = 'Install',
+
+	[Parameter(Mandatory=$false)]
+
+	[ValidateSet('Interactive','Silent','NonInteractive')]
+
+	[string]$DeployMode = 'Interactive',
+
+	[Parameter(Mandatory=$false)]
+
+	[switch]$AllowRebootPassThru = $false,
+
+	[Parameter(Mandatory=$false)]
+
+	[switch]$TerminalServerMode = $false,
+
+	[Parameter(Mandatory=$false)]
+
+	[switch]$DisableLogging = $false
+
+)
+
+
+
+Try {
+
+	## Set the script execution policy for this process
+
+	Try { Set-ExecutionPolicy -ExecutionPolicy 'ByPass' -Scope 'Process' -Force -ErrorAction 'Stop' } Catch {}
+
+	
+
+	##*===============================================
+
+	##* VARIABLE DECLARATION
+
+	##*===============================================
+
+	## Variables: Application
+
+	[string]$appVendor = 'SAP'
+
+	[string]$appName = 'SAP GUI'
+
+	[string]$appVersion = '7.60'
+
+	[string]$appArch = 'x86'
+
+	[string]$appLang = 'en-US'
+
+	[string]$appRevision = 'R1'
+
+	[string]$appScriptVersion = '1.0.0'
+
+	[string]$appScriptDate = '2020-02-04'
+
+	[string]$appScriptAuthor = 'MHOL'
+
+	##*===============================================
+
+	## Variables: Install Titles (Only set here to override defaults set by the toolkit)
+
+	[string]$installName = ''
+
+	[string]$installTitle = ''
+
+    [string]$HaldorReg = 'HKLM\SOFTWARE\Topsoe\PSADT'
+
+	
+
+	##* Do not modify section below
+
+	#region DoNotModify
+
+	
+
+	## Variables: Exit Code
+
+	[int32]$mainExitCode = 0
+
+	
+
+	## Variables: Script
+
+	[string]$deployAppScriptFriendlyName = 'Deploy Application'
+
+	[version]$deployAppScriptVersion = [version]'3.6.9'
+
+	[string]$deployAppScriptDate = '02/12/2017'
+
+	[hashtable]$deployAppScriptParameters = $psBoundParameters
+
+	
+
+	## Variables: Environment
+
+	If (Test-Path -LiteralPath 'variable:HostInvocation') { $InvocationInfo = $HostInvocation } Else { $InvocationInfo = $MyInvocation }
+
+	[string]$scriptDirectory = Split-Path -Path $InvocationInfo.MyCommand.Definition -Parent
+
+	
+
+	## Dot source the required App Deploy Toolkit Functions
+
+	Try {
+
+		[string]$moduleAppDeployToolkitMain = "$scriptDirectory\AppDeployToolkit\AppDeployToolkitMain.ps1"
+
+		If (-not (Test-Path -LiteralPath $moduleAppDeployToolkitMain -PathType 'Leaf')) { Throw "Module does not exist at the specified location [$moduleAppDeployToolkitMain]." }
+
+		If ($DisableLogging) { . $moduleAppDeployToolkitMain -DisableLogging } Else { . $moduleAppDeployToolkitMain }
+
+	}
+
+	Catch {
+
+		If ($mainExitCode -eq 0){ [int32]$mainExitCode = 60008 }
+
+		Write-Error -Message "Module [$moduleAppDeployToolkitMain] failed to load: `n$($_.Exception.Message)`n `n$($_.InvocationInfo.PositionMessage)" -ErrorAction 'Continue'
+
+		## Exit the script, returning the exit code to SCCM
+
+		If (Test-Path -LiteralPath 'variable:HostInvocation') { $script:ExitCode = $mainExitCode; Exit } Else { Exit $mainExitCode }
+
+	}
+
+	
+
+	#endregion
+
+	##* Do not modify section above
+
+	##*===============================================
+
+	##* END VARIABLE DECLARATION
+
+	##*===============================================
+
+		
+
+	If ($deploymentType -ine 'Uninstall') {
+
+		##*===============================================
+
+		##* PRE-INSTALLATION
+
+		##*===============================================
+
+		[string]$installPhase = 'Pre-Installation'
+
+		
+
+			
+
+		## Show Progress Message (with the default message)
+
+				
+
+		## <Perform Pre-Installation tasks here>
+
+		$useDefaultMsi = $false		
+
+		
+
+		Show-InstallationWelcome -CloseApps 'saplogon' -ForceCloseAppsCountdown 600 #-AllowDefer -DeferTimes 5
+
+		
+
+		If (Test-Path "$envProgramFilesX86\SAP\FrontEnd\SAPgui\compInfo740.txt") {
+
+            Write-Log -Message 'File C:\Program Files (x86)\SAP\FrontEnd\SAPgui\compInfo740.txt found' -Severity 1 -Source $deployAppScriptFriendlyName
+
+            If (Test-Path "$envProgramFilesX86\SAP BusinessObjects\Office AddIn\SapExcelAddIn.dll") {
+
+				Write-Log -Message 'File C:\Program Files (x86)\SAP BusinessObjects\Office AddIn\SapExcelAddIn.dll found' -Severity 1 -Source $deployAppScriptFriendlyName
+
+				Execute-Process -Path "$EnvProgramFilesX86\SAP\SAPsetup\setup\NwSapSetup.exe" -Parameters '/Product="SapCof" /Uninstall /Silent' -WindowStyle 'Hidden' -ContinueOnError $True
+
+			}
+
+        }
+
+		
+
+		If (Test-Path "$envProgramFilesX86\SAP\FrontEnd\SAPgui\compInfo740.txt") {
+
+            Write-Log -Message 'File C:\Program Files (x86)\SAP\FrontEnd\SAPgui\compInfo740.txt found' -Severity 1 -Source $deployAppScriptFriendlyName
+
+            Execute-Process -Path "$EnvProgramFilesX86\SAP\SAPsetup\setup\NwSapSetup.exe" -Parameters '/Product="SLC" /Uninstall /Silent' -WindowStyle 'Hidden' -ContinueOnError $True
+
+        }
+
+		
+
+		If (Test-Path "$envProgramFilesX86\SAP\FrontEnd\SAPgui\compInfo740.txt") {
+
+            Write-Log -Message 'File C:\Program Files (x86)\SAP\FrontEnd\SAPgui\compInfo740.txt found' -Severity 1 -Source $deployAppScriptFriendlyName
+
+            Execute-Process -Path "$EnvProgramFilesX86\SAP\SAPsetup\setup\NwSapSetup.exe" -Parameters '/product="SapBI" /Uninstall /Silent' -WindowStyle 'Hidden' -ContinueOnError $True
+
+        }
+
+		
+
+		If (Test-Path "$envProgramFilesX86\SAP\FrontEnd\SAPgui\compInfo740.txt") {
+
+            Write-Log -Message 'File C:\Program Files (x86)\SAP\FrontEnd\SAPgui\compInfo740.txt found' -Severity 1 -Source $deployAppScriptFriendlyName
+
+            Execute-Process -Path "$EnvProgramFilesX86\SAP\SAPsetup\setup\NwSapSetup.exe" -Parameters '/Silent /Uninstall /product="SCRIPTED+SCE+ECL+SAPDTS+KW+GUIISHMED+JNet+NWBCGUI+SAPGUI" /TitleComponent:"SAPGUI" /IgnoreMissingProducts' -WindowStyle 'Hidden' -ContinueOnError $True
+
+        }
+
+		
+
+		##*===============================================
+
+		##* INSTALLATION 
+
+		##*===============================================
+
+		[string]$installPhase = 'Installation'
+
+		
+
+		## Handle Zero-Config MSI Installations
+
+		If ($useDefaultMsi) {
+
+			[hashtable]$ExecuteDefaultMSISplat =  @{ Action = 'Install'; Path = $defaultMsiFile }; If ($defaultMstFile) { $ExecuteDefaultMSISplat.Add('Transform', $defaultMstFile) }
+
+			Execute-MSI @ExecuteDefaultMSISplat; If ($defaultMspFiles) { $defaultMspFiles | ForEach-Object { Execute-MSI -Action 'Patch' -Path $_ } }
+
+		}
+
+		
+
+		
+
+        ##NwSapSetup.exe return codes: https://help.sap.com/viewer/62f9e2de88cd404d9eafe32504e1d4cf/9.0/en-US/7530bf77b28c4be8bc31effbd0ee4e9e.html
+
+
+
+        ## <Perform Installation tasks here>
+
+		Show-InstallationProgress -StatusMessage 'Installing SAP GUI 7.60 - This may take some time. Please wait...'
+
+
+
+        #Temp - Remove when VSTO has been added to Hybrid 1
+
+        ## Execute-Process -Path "$dirSupportFiles\vstor_redist.exe" -Parameters '/q /norestart' -WindowStyle 'Hidden'
+
+		
+
+		$destinationFolder_VSTO = "C:\Program Files\Common Files\microsoft shared\VSTO\10.0"
+
+		if (!(Test-Path -path $destinationFolder_VSTO)) {Execute-Process -Path "$dirSupportFiles\vstor_redist.exe" -Parameters '/q /norestart' -WindowStyle 'Hidden'}
+
+		
+
+        #Install SAP GUI for Windows 7.60 (Patch 4)
+
+        Execute-Process -Path "$dirFiles\Setup\NwSapSetup.exe" -Parameters '/package:"SAPgui760" /NoDlg /Silent' -WindowStyle 'Hidden' -IgnoreExitCodes '129,130,144,145,146' -PassThru
+
+        
+
+        #Install SAP BusinessObjects Analytisis for Microsoft Office
+
+        Execute-Process -Path "$dirSupportFiles\AOFFICE27SP06_0-80003503.exe" -Parameters '/Silent' -WindowStyle 'Hidden' -IgnoreExitCodes '70,129,130,144,145,146'
+
+
+
+        #Install SAP Secure Login Client (x64)
+
+        Execute-Process -Path "$dirSupportFiles\SAPSetupSLC02_4-80001954.EXE" -Parameters '/Silent' -WindowStyle 'Hidden' -IgnoreExitCodes '129,130,144,145,146'
+
+        		
+
+		
+
+		##*===============================================
+
+		##* POST-INSTALLATION
+
+		##*===============================================
+
+		[string]$installPhase = 'Post-Installation'
+
+		
+
+		## <Perform Post-Installation tasks here>
+
+		
+
+		If (Test-Path -path "C:\ProgramData\SAP\Cof") {Copy-File -Path  "$dirSupportFiles\Ao_app.config" -Destination "C:\ProgramData\SAP\Cof\Ao_app.config"}
+
+		
+
+        #Disable LandscapeFormat and use saplogon.ini
+
+        Set-RegistryKey -Key 'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\SAP\SAPLogon' -Name 'LandscapeFormatEnabled' -Value 0 -Type 'DWord'
+
+
+
+        #Configure XML file on server
+
+        [scriptblock]$HKCURegistrySettings = {    
+
+            Set-RegistryKey -Key 'HKCU\Software\SAP\SAPLogon\Options' -Name 'ConfigFileOnServer' -Value "\\topsoe.dk\netlogon\SAP\SAP GUI\SapLogonTree.xml" -Type String -SID $UserProfile.SID
+
+            Set-RegistryKey -Key 'HKCU\Software\SAP\SAPLogon\Options' -Name 'LandscapeFileOnServer' -Value "\\topsoe.dk\netlogon\SAP\SAP GUI\SapLogonTree.xml" -Type ExpandString -SID $UserProfile.SID
+
+            Set-RegistryKey -Key 'HKCU\Software\SAP\SAPLogon\Options' -Name 'AllowCachingServerConfigFiles' -Value 1 -Type DWord -SID $UserProfile.SID
+
+            Set-RegistryKey -Key 'HKCU\Software\SAP\SAPLogon\Options' -Name 'LandscapeCacheExpiryPeriod' -Value 0 -Type DWord -SID $UserProfile.SID
+
+
+
+        }
+
+    
+
+        Invoke-HKCURegistrySettingsForAllUsers -RegistrySettings $HKCURegistrySettings
+
+
+
+
+
+        Set-RegistryKey -Key "$HaldorReg" -Name "$appName $appVersion" -Value "$appRevision"
+
+
+
+
+
+		## Display a message at the end of the install
+
+		If (-not $useDefaultMsi) { 
+
+			#Show-InstallationPrompt -Message 'You can customize text to appear at the end of an install or remove it completely for unattended installations.' -ButtonRightText 'OK' -Icon Information -NoWait 
+
+		}
+
+	}
+
+	ElseIf ($deploymentType -ieq 'Uninstall')
+
+	{
+
+		##*===============================================
+
+		##* PRE-UNINSTALLATION
+
+		##*===============================================
+
+		[string]$installPhase = 'Pre-Uninstallation'
+
+		
+
+				
+
+		## <Perform Pre-Uninstallation tasks here>
+
+        		
+
+		Show-InstallationWelcome -CloseApps 'saplogon' -ForceCloseAppsCountdown 600 #-AllowDefer -DeferTimes 5
+
+		
+
+		##*===============================================
+
+		##* UNINSTALLATION
+
+		##*===============================================
+
+		[string]$installPhase = 'Uninstallation'
+
+		
+
+		## Handle Zero-Config MSI Uninstallations
+
+		If ($useDefaultMsi) {
+
+			[hashtable]$ExecuteDefaultMSISplat =  @{ Action = 'Uninstall'; Path = $defaultMsiFile }; If ($defaultMstFile) { $ExecuteDefaultMSISplat.Add('Transform', $defaultMstFile) }
+
+			Execute-MSI @ExecuteDefaultMSISplat
+
+		}
+
+		
+
+		# <Perform Uninstallation tasks here>
+
+
+
+        Show-InstallationProgress -StatusMessage 'Uninstalling SAP GUI 7.60 - This may take some time. Please wait...'
+
+
+
+        #Uninstall SAP Secure Login Client (x64)
+
+        Execute-Process -Path "$EnvProgramFilesX86\SAP\SAPsetup\setup\NwSapSetup.exe" -Parameters '/Product="SLC" /Uninstall /Silent' -WindowStyle 'Hidden' -ContinueOnError $True
+
+
+
+        #UnInstall SAP BusinessObjects Analytisis for Microsoft Office
+
+        Execute-Process -Path "$EnvProgramFilesX86\SAP\SAPsetup\setup\NwSapSetup.exe" -Parameters '/Product="SapCof" /Uninstall /Silent' -WindowStyle 'Hidden' -ContinueOnError $True
+
+
+
+        #UnInstall SAP GUI for Windows 7.50 (Patch 6)
+
+        Execute-Process -Path "$EnvProgramFilesX86\SAP\SAPsetup\setup\NwSapSetup.exe" -Parameters '/Silent /Uninstall /Package="SAPgui760"' -WindowStyle 'Hidden' -ContinueOnError $True
+
+
+
+		
+
+		##*===============================================
+
+		##* POST-UNINSTALLATION
+
+		##*===============================================
+
+		[string]$installPhase = 'Post-Uninstallation'
+
+		
+
+		## <Perform Post-Uninstallation tasks here>
+
+        #Remove saplogon.ini if pressent
+
+        If (Test-Path "$envWindir\saplogon.ini"){
+
+            Remove-File -Path "$envWindir\saplogon.ini"
+
+        }
+
+		
+
+        Remove-RegistryKey -Key "$HaldorReg" -Name "$appName $appVersion"
+
+	}
+
+	
+
+	##*===============================================
+
+	##* END SCRIPT BODY
+
+	##*===============================================
+
+	
+
+	## Call the Exit-Script function to perform final cleanup operations
+
+	Exit-Script -ExitCode $mainExitCode
+
+}
+
+Catch {
+
+	[int32]$mainExitCode = 60001
+
+	[string]$mainErrorMessage = "$(Resolve-Error)"
+
+	Write-Log -Message $mainErrorMessage -Severity 3 -Source $deployAppScriptFriendlyName
+
+	Show-DialogBox -Text $mainErrorMessage -Icon 'Stop'
+
+	Exit-Script -ExitCode $mainExitCode
+
+}
